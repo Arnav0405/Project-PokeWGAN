@@ -20,10 +20,13 @@ torch.use_deterministic_algorithms(True)
 
 BATCH_SIZE = 32
 EPOCHS = 5
+RESIZE_SIZE = 128
 
 
 def main():
-    dm = PokemonDataModule(batch_size=BATCH_SIZE, num_workers=4)
+    dm = PokemonDataModule(
+        batch_size=BATCH_SIZE, num_workers=4, resize_size=RESIZE_SIZE
+    )
     dm.setup()
 
     # Code only for testing

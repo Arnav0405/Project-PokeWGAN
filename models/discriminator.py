@@ -1,0 +1,88 @@
+import torch
+import torch.nn as nn
+
+from .conv_block import ConvBlock
+from .equalized_conv import EqualizedConv2d
+
+
+class Discriminator(nn.Module):
+    """
+    Discriminator for 128x128 RGB images.
+
+    Architecture:
+      1) Equalized Conv (from RGB input)
+      2) ConvBlock
+      3) AvgPool2d(2)
+      4) ConvBlock
+      5) AvgPool2d(2)
+      6) ConvBlock
+      7) AvgPool2d(2)
+      8) ConvBlock
+      9) Final Equalized Conv to 1 channel
+     10) Sigmoid output (real/fake probability)
+
+    Input:
+      - (N, 3, 128, 128)
+
+    Output:
+      - (N, 1) probability in [0, 1]
+    """
+
+    def __init__(self, in_channels: int = 3, base_channels: int = 64):
+        super().__init__()
+
+        c1 = base_channels  # 128x128
+        c2 = base_channels * 2  # 64x64
+        c3 = base_channels * 4  # 32x32
+        c4 = base_channels * 8  # 16x16
+
+        # 1) Initial Equalized Convolution
+        self.from_rgb = EqualizedConv2d(
+            in_channels, c1, kernel_size=3, stride=1, padding=1
+        )
+        self.from_rgb_act = nn.LeakyReLU(0.2, inplace=True)
+
+        # 2) ConvBlock -> 3) Pool
+        self.block1 = ConvBlock(c1, c1)
+        self.pool1 = nn.AvgPool2d(kernel_size=2, stride=2)
+
+        # 4) ConvBlock -> 5) Pool
+        self.block2 = ConvBlock(c1, c2)
+        self.pool2 = nn.AvgPool2d(kernel_size=2, stride=2)
+
+        # 6) ConvBlock -> 7) Pool
+        self.block3 = ConvBlock(c2, c3)
+        self.pool3 = nn.AvgPool2d(kernel_size=2, stride=2)
+
+        # 8) ConvBlock (kept at 16x16 spatial size)
+        self.block4 = ConvBlock(c3, c4)
+
+        # 9) Final Equalized Conv to 1 channel, then flatten + sigmoid
+        self.final_conv = EqualizedConv2d(c4, 1, kernel_size=16, stride=1, padding=0)
+
+        # 10) Sigmoid for final probability
+        self.out_act = nn.Sigmoid()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() != 4 or x.shape[1:] != (3, 128, 128):
+            raise ValueError(
+                f"Expected input shape (N, 3, 128, 128), got {tuple(x.shape)}"
+            )
+
+        x = self.from_rgb_act(self.from_rgb(x))
+
+        x = self.block1(x)
+        x = self.pool1(x)  # 64x64
+
+        x = self.block2(x)
+        x = self.pool2(x)  # 32x32
+
+        x = self.block3(x)
+        x = self.pool3(x)  # 16x16
+
+        x = self.block4(x)  # 16x16
+
+        x = self.final_conv(x)  # (N, 1, 1, 1)
+        x = x.view(x.size(0), -1)  # (N, 1)
+        x = self.out_act(x)  # (N, 1), probability
+        return x

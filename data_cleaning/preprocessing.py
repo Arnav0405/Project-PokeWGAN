@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 from pathlib import Path
 from typing import Optional
 
@@ -30,6 +29,7 @@ class PokemonDataModule(L.LightningDataModule):
         output_file: str = "pokemon_128_normalized.pt",
         batch_size: int = 32,
         num_workers: int = 0,
+        resize_size: int = 128,
         pin_memory: bool = True,
     ) -> None:
         super().__init__()
@@ -38,12 +38,13 @@ class PokemonDataModule(L.LightningDataModule):
         self.output_file = output_file
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.resize_size = resize_size
         self.pin_memory = pin_memory
 
         # Mean/std 0.5 maps [0, 1] -> [-1, 1]
         self.transform = transforms.Compose(
             [
-                transforms.Resize((128, 128)),
+                transforms.Resize((resize_size, resize_size)),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
             ]
