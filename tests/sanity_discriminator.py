@@ -2,6 +2,7 @@ import os
 import sys
 
 import torch
+from torchinfo import summary
 
 # Ensure project root is on PYTHONPATH when running this file directly
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -55,6 +56,9 @@ def run_sanity_discriminator() -> None:
     except ValueError as exc:
         print("✅ Input-shape validation check passed.")
         print(f"Raised error: {exc}")
+
+    print("\nDiscriminator torchinfo summary:")
+    summary(model, input_size=(batch_size, 3, 128, 128), device="cpu")
 
 
 if __name__ == "__main__":

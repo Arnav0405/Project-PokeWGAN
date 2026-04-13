@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import torch
+from torchinfo import summary
 
 # Ensure project root is on sys.path when this file is run directly, e.g.:
 # python tests/sanity_generator.py
@@ -53,6 +54,9 @@ def run_sanity_test(
     print(f"Total params: {params:,}")
     print(f"Trainable params: {trainable_params:,}")
     print("✅ Generator sanity test passed.")
+
+    print("\nModel summary:")
+    summary(gen, input_size=(batch_size, z_dim))
 
 
 if __name__ == "__main__":
