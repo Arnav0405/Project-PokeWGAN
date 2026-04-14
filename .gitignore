@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv
 data/
+
+models/checkpoints/
+models/logs/
+models/trained/
+lightning_logs/

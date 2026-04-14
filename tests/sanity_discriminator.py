@@ -15,18 +15,19 @@ from models import Discriminator
 
 def run_sanity_discriminator() -> None:
     """
-    Simple sanity checks for Discriminator:
+    Simple sanity checks for Discriminator (64x64 setup):
     1) Forward pass shape check
     2) Probability range check after sigmoid
-    3) Input shape validation check
+    3) Input shape validation check (invalid spatial size should raise ValueError)
     """
     torch.manual_seed(42)
 
     batch_size = 8
-    img_size = 128
+    img_size = 64
     x = torch.randn(batch_size, 3, img_size, img_size)
 
-    model = Discriminator(in_channels=3, base_channels=img_size)
+    # Keep base_channels modest and independent of img_size
+    model = Discriminator(in_channels=3, base_channels=64)
     model.eval()
 
     with torch.no_grad():
@@ -46,8 +47,8 @@ def run_sanity_discriminator() -> None:
     print(f"Output shape: {tuple(y.shape)}")
     print(f"Min prob: {y.min().item():.6f}, Max prob: {y.max().item():.6f}")
 
-    # 3) Bad input shape should raise ValueError
-    bad_x = torch.randn(batch_size, 3, 64, 64)
+    # 3) Bad input shape should raise ValueError (128x128 instead of expected 64x64)
+    bad_x = torch.randn(batch_size, 3, 128, 128)
     try:
         _ = model(bad_x)
         raise AssertionError(
@@ -58,7 +59,7 @@ def run_sanity_discriminator() -> None:
         print(f"Raised error: {exc}")
 
     print("\nDiscriminator torchinfo summary:")
-    summary(model, input_size=(batch_size, 3, 128, 128), device="cpu")
+    summary(model, input_size=(batch_size, 3, img_size, img_size), device="cpu")
 
 
 if __name__ == "__main__":

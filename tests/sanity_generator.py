@@ -31,7 +31,7 @@ def run_sanity_test(
         noise = torch.randn(batch_size, z_dim, device=device)
         out = gen(noise)
 
-    expected_shape = (batch_size, 3, 128, 128)
+    expected_shape = (batch_size, 3, 64, 64)
 
     print(f"Output shape: {tuple(out.shape)}")
     print(f"Output dtype: {out.dtype}")

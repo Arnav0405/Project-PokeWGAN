@@ -21,7 +21,9 @@ dependencies = [
     { name = "seaborn" },
     { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "torch-fidelity" },
     { name = "torchinfo" },
+    { name = "torchmetrics" },
     { name = "torchvision" },
     { name = "tqdm" },
 ]
@@ -36,7 +38,9 @@ requires-dist = [
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=2.11.0" },
     { name = "torch", marker = "sys_platform == 'linux' or sys_platform == 'win32'", specifier = ">=2.11.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torch-fidelity", specifier = ">=0.4.0" },
     { name = "torchinfo", specifier = ">=1.8.0" },
+    { name = "torchmetrics", specifier = ">=1.9.0" },
     { name = "torchvision", specifier = ">=0.22.0" },
     { name = "tqdm", specifier = ">=4.67.3" },
 ]
@@ -1396,6 +1400,23 @@ wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.11.0%2Bcu130-cp314-cp314t-manylinux_2_28_aarch64.whl" },
     { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.11.0%2Bcu130-cp314-cp314t-manylinux_2_28_x86_64.whl" },
     { url = "https://download-r2.pytorch.org/whl/cu130/torch-2.11.0%2Bcu130-cp314-cp314t-win_amd64.whl" },
+]
+
+[[package]]
+name = "torch-fidelity"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pillow" },
+    { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "torchvision" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/32/37/94e4d31a157bae81622557b7f94f93ca3749e6b592203633858dbca8c835/torch_fidelity-0.4.0.tar.gz", hash = "sha256:73548b97f1a844cb94dee7736c8485cbf1e5ae43670679f62ffb7bbb8bb3d455", size = 1349034, upload-time = "2026-02-17T21:04:57.976Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/35/e0988c963538d155befe1c4e1b90ff2925eaa40acc27fb2bba737dcb7288/torch_fidelity-0.4.0-py3-none-any.whl", hash = "sha256:99f4c610ea16972628eceb26afb0008e528da2d44123db947b408750efbd35d4", size = 85594, upload-time = "2026-02-17T21:04:56.166Z" },
 ]
 
 [[package]]

@@ -113,19 +113,18 @@ class AttentionConvBlock(nn.Module):
 
 class Generator(nn.Module):
     """
-    GAN Generator producing 128x128 RGB output from Gaussian noise.
+    GAN Generator producing 64x64 RGB output from Gaussian noise.
 
     Expected input shape:
       - (N, z_dim) OR (N, z_dim, 1, 1)
 
     Architecture:
       - Stem projection to 4x4
-      - 5 upscaling blocks (2x each):
-          1) TransposeConvBlock
-          2) ResidualConvBlockV1
-          3) ResidualConvBlockV2
-          4) AttentionConvBlock
-          5) Equalized Conv block (with upsample + eq conv)
+      - 4 upscaling stages (2x each):
+          1) TransposeConvBlock        : 4x4   -> 8x8
+          2) ResidualConvBlockV1 stage : 8x8   -> 16x16
+          3) ResidualConvBlockV2 stage : 16x16 -> 32x32
+          4) AttentionConvBlock stage  : 32x32 -> 64x64
       - ToRGB Equalized Conv (3 channels) + Tanh
     """
 
@@ -145,13 +144,12 @@ class Generator(nn.Module):
         self.proj_act = nn.LeakyReLU(0.2, inplace=True)
         self.proj_pn = PixelNorm()
 
-        # Channel schedule across 5 upscales: 4->8->16->32->64->128
+        # Channel schedule across 4 upscales: 4->8->16->32->64
         c1 = base_channels  # 4x4
         c2 = base_channels // 2  # 8x8
         c3 = base_channels // 4  # 16x16
         c4 = base_channels // 8  # 32x32
-        c5 = base_channels // 16  # 64x64
-        c6 = max(base_channels // 32, 32)  # 128x128
+        c5 = max(base_channels // 16, 32)  # 64x64
 
         # 1) Transpose ConvBlock (upsample 2x)
         self.up1 = TransposeConvBlock(c1, c2)
@@ -174,16 +172,8 @@ class Generator(nn.Module):
         )
         self.up4_block = AttentionConvBlock(c5)
 
-        # 5) Equalized Conv block + upsample
-        self.up5_conv = EqualizedConvTranspose2d(
-            c5, c6, kernel_size=4, stride=2, padding=1
-        )
-        self.up5_eq = EqualizedConv2d(c6, c6, kernel_size=3, padding=1)
-        self.up5_act = nn.LeakyReLU(0.2, inplace=True)
-        self.up5_pn = PixelNorm()
-
         # Final RGB conv
-        self.to_rgb = EqualizedConv2d(c6, out_channels, kernel_size=1, padding=0)
+        self.to_rgb = EqualizedConv2d(c5, out_channels, kernel_size=1, padding=0)
         self.out_act = nn.Tanh()
 
     def _ensure_4d_noise(self, z: torch.Tensor) -> torch.Tensor:
@@ -210,9 +200,6 @@ class Generator(nn.Module):
 
         x = self.up4_conv(x)  # 64x64
         x = self.up4_block(x)
-
-        x = self.up5_conv(x)  # 128x128
-        x = self.up5_pn(self.up5_act(self.up5_eq(x)))
 
         x = self.to_rgb(x)
         x = self.out_act(x)

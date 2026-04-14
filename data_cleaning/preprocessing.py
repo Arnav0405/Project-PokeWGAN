@@ -109,7 +109,7 @@ class PokemonDataModule(L.LightningDataModule):
         save_path = self.output_dir / self.output_file
         torch.save(
             {
-                "images": images_tensor,  # shape: [N, 3, 128, 128], values in [-1, 1]
+                "images": images_tensor,  # shape: [N, 3, 64, 64], values in [-1, 1]
                 "labels": labels_tensor,  # shape: [N]
                 "class_to_idx": self.dataset.class_to_idx,
                 "idx_to_class": {v: k for k, v in self.dataset.class_to_idx.items()},
@@ -125,7 +125,8 @@ def main() -> None:
     dm = PokemonDataModule(
         data_dir="data/pokemon_jpg/pokemon_jpg",
         output_dir="data/processed",
-        output_file="pokemon_128_normalized.pt",
+        output_file="pokemon_64_normalized.pt",
+        resize_size=64,
         batch_size=64,
         num_workers=0,
         pin_memory=torch.cuda.is_available(),
