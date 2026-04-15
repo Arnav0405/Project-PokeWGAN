@@ -38,9 +38,10 @@ def main():
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     # Load preprocessed 64x64 tensors saved by preprocessing.py
-    dm = PreprocessedPokemonDataModule(
-        data_path="data/processed/pokemon_64_normalized.pt",
+    dm = PokemonDataModule(
+        data_dir="data/pokemon_jpg/pokemon_jpg",
         batch_size=64,
+        resize_size=64,
         num_workers=4,
     )
 
@@ -53,7 +54,7 @@ def main():
         d_base_channels=64,
         out_channels=3,
         learning_rate=0.001,
-        beta=(0.0, 0.99),
+        beta=(0.9, 0.99),
     )
 
     # Logger writes logs to disk continuously
@@ -100,9 +101,8 @@ def main():
         z = torch.randn(1, model.z_dim, 1, 1, device=device)
         fake = model.generator(z).detach().cpu()
 
-    img = (fake[0] + 1) / 2  # denormalize from [-1, 1] to [0, 1]
-    img = img.clamp(0, 1).permute(1, 2, 0).numpy()
-
+    # De-normalize images from (0, 1) to (0, 255) scale
+    img = fake[0].permute(1, 2, 0).clamp(0, 1).mul(255).byte().numpy()
     plt.figure(figsize=(4, 4))
     plt.imshow(img)
     plt.axis("off")

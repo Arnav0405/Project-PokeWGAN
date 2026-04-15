@@ -41,12 +41,12 @@ class PokemonDataModule(L.LightningDataModule):
         self.resize_size = resize_size
         self.pin_memory = pin_memory
 
-        # Mean/std 0.5 maps [0, 1] -> [-1, 1]
+        # Maps [0, 1]
         self.transform = transforms.Compose(
             [
                 transforms.Resize((resize_size, resize_size)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+                transforms.Normalize(mean=(0.0, 0.0, 0.0), std=(1.0, 1.0, 1.0)),
             ]
         )
 

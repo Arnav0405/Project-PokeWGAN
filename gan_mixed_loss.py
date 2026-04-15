@@ -97,7 +97,7 @@ def generator_loss(
     """
     Non‑saturating generator loss (Equation 3).
 
-    L_G = -E[log D(G(z))]
+    L_G = -E[log G(z)]
     """
     fake_images = generator(noise)
     d_fake = discriminator(fake_images)  # (N, 1) probability
@@ -110,7 +110,7 @@ def _dummy_real_batch(batch_size: int, device: torch.device) -> torch.Tensor:
     Returns a batch of random “real” images in the expected range [-1, 1].
     In a real project you would replace this with a DataLoader over your dataset.
     """
-    return torch.randn(batch_size, 3, 128, 128, device=device).clamp(-1, 1)
+    return torch.randn(batch_size, 3, 64, 64, device=device).clamp(0, 1)
 
 
 def train_demo(
@@ -123,8 +123,12 @@ def train_demo(
 ):
     # Initialise models
     generator = Generator(z_dim=z_dim).to(device)
+
     discriminator = Discriminator().to(device)
 
+    z = torch.randn(4, 256)  # batch of 4 noise vectors
+    loss = generator_loss(discriminator, generator, z)
+    print(loss.item())
     # Optimisers
     opt_g = optim.Adam(generator.parameters(), lr=lr, betas=(0.0, 0.99))
     opt_d = optim.Adam(discriminator.parameters(), lr=lr, betas=(0.0, 0.99))
@@ -163,4 +167,5 @@ def train_demo(
 
 if __name__ == "__main__":
     # Run the tiny demo – it will print two lines (one per epoch)
+
     train_demo()
