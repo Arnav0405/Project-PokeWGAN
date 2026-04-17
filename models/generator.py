@@ -125,7 +125,7 @@ class Generator(nn.Module):
           2) ResidualConvBlockV1 stage : 8x8   -> 16x16
           3) ResidualConvBlockV2 stage : 16x16 -> 32x32
           4) AttentionConvBlock stage  : 32x32 -> 64x64
-      - ToRGB Equalized Conv (3 channels) + Tanh
+      - ToRGB Equalized Conv (3 channels) + Sigmoid
     """
 
     def __init__(
@@ -174,7 +174,7 @@ class Generator(nn.Module):
 
         # Final RGB conv
         self.to_rgb = EqualizedConv2d(c5, out_channels, kernel_size=1, padding=0)
-        self.out_act = nn.Tanh()
+        self.out_act = nn.Sigmoid()
 
     def _ensure_4d_noise(self, z: torch.Tensor) -> torch.Tensor:
         if z.dim() == 2:

@@ -18,7 +18,7 @@ class PokemonDataModule(L.LightningDataModule):
 
     - Loads all .jpg files from `data/pokemon_jpg/pokemon_jpg/`
     - Resizes to 128x128
-    - Converts to tensor and normalizes pixel values to [-1, 1]
+    - Converts to tensor and normalizes pixel values to [0, 1]
     - Saves the fully preprocessed dataset tensor to disk
     """
 

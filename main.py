@@ -1,114 +1,269 @@
-import logging
-import random
+from __future__ import annotations
+
+import argparse
 from pathlib import Path
+from typing import Dict, List
 
-# Suppress PyTorch Triton warning:
-# "torch.utils.flop_counter.py: triton not found; flop counting will not work for triton kernels"
-logging.getLogger("torch.utils.flop_counter").setLevel(logging.ERROR)
-
-import lightning as L
 import matplotlib.pyplot as plt
 import torch
-from lightning.pytorch.callbacks import ModelCheckpoint, TQDMProgressBar
-from lightning.pytorch.loggers import CSVLogger
-from torchmetrics.image.fid import FrechetInceptionDistance
+from torch.utils.data import DataLoader, TensorDataset
 
-from data_cleaning.preprocessing import PokemonDataModule
-from lightning_gan import GANLightningModule
-
-manualSeed = 42
-random.seed(manualSeed)
-torch.manual_seed(manualSeed)
-torch.use_deterministic_algorithms(True)
-
-# Fixed-resolution GAN setup
-BATCH_SIZE = 64
-EPOCHS = 200
-IMAGE_SIZE = 64  # train GAN strictly at 64x64
+from models.discriminator import Discriminator
+from models.generator import Generator
+from models.wgan_gp_trainer import WGANTrainer
+from plotter import plot_images
 
 
-def main():
-    # Output directories
-    checkpoint_dir = Path("models") / "checkpoints"
-    final_model_dir = Path("models") / "trained"
-    logs_dir = Path("models") / "logs"
+def load_processed_dataset(path: Path) -> torch.Tensor:
+    if not path.exists():
+        raise FileNotFoundError(f"Processed tensor file not found: {path}")
 
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    final_model_dir.mkdir(parents=True, exist_ok=True)
-    logs_dir.mkdir(parents=True, exist_ok=True)
+    payload = torch.load(path, map_location="cpu")
+    if not isinstance(payload, dict) or "images" not in payload:
+        raise ValueError(
+            f"Unexpected dataset format in {path}. Expected dict with key 'images'."
+        )
 
-    # Load preprocessed 64x64 tensors saved by preprocessing.py
-    dm = PokemonDataModule(
-        data_dir="data/pokemon_jpg/pokemon_jpg",
-        batch_size=64,
-        resize_size=64,
-        num_workers=4,
-    )
+    images = payload["images"]
+    if not isinstance(images, torch.Tensor):
+        raise TypeError("'images' entry is not a torch.Tensor")
+    if images.dim() != 4 or images.shape[1:] != (3, 64, 64):
+        raise ValueError(
+            f"Expected image tensor shape [N, 3, 64, 64], got {tuple(images.shape)}"
+        )
 
-    # Fixed 64x64 GAN config:
-    # - Generator should output 64x64
-    # - Discriminator should expect 64x64
-    model = GANLightningModule(
-        z_dim=256,
-        g_base_channels=512,
-        d_base_channels=64,
-        out_channels=3,
-        learning_rate=0.001,
-        beta=(0.9, 0.99),
-    )
+    return images
 
-    # Logger writes logs to disk continuously
-    csv_logger = CSVLogger(save_dir=str(logs_dir), name="lightning_gan_64x64")
 
-    # FID metric callback setup (lower is better)
-    fid_metric = FrechetInceptionDistance(feature=2048)
+def denormalize_to_uint8(image_chw: torch.Tensor) -> torch.Tensor:
+    """
+    Convert generated CHW image tensor to uint8 [0, 255].
 
-    # Checkpoint callback based on lowest FID
-    checkpoint_callback = ModelCheckpoint(
-        dirpath=str(checkpoint_dir),
-        filename="gan64-epoch{epoch:03d}-fid{fid_score:.4f}",
-        save_top_k=5,  # save top 5 checkpoints
-        monitor="fid",
-        mode="min",
-        save_last=True,
-    )
+    Supports:
+      - [0, 1] tensors  -> x * 255
+      - [-1, 1] tensors -> ((x + 1) / 2) * 255
+    """
+    img = image_chw.detach().cpu().float()
 
-    # Trainer on GPU (fallback to CPU if unavailable)
-    trainer = L.Trainer(
-        max_epochs=EPOCHS,
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        devices=1,
-        logger=csv_logger,
-        callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate=10)],
-        enable_progress_bar=True,
-        log_every_n_steps=1,
-    )
+    min_v = float(img.min().item())
+    max_v = float(img.max().item())
 
-    # Attach FID metric to model for logging/checkpoint monitoring
-    model.fid = fid_metric
+    if min_v >= -1.0 and max_v <= 1.0 and min_v < 0.0:
+        img = (img + 1.0) / 2.0
 
-    # Train
-    trainer.fit(model, datamodule=dm)
+    img = img.clamp(0.0, 1.0)
+    img = (img * 255.0).round().to(torch.uint8)
+    return img
 
-    # Save final trained generator weights
-    # final_model_path = final_model_dir / "gan_generator_64x64_final.pt"
-    # torch.save(model.generator.state_dict(), final_model_path)
 
-    # Generate and visualize fake images
-    model.eval()
-    device = model.device
-    with torch.no_grad():
-        z = torch.randn(1, model.z_dim, 1, 1, device=device)
-        fake = model.generator(z).detach().cpu()
+def plot_and_save_image_uint8(image_uint8_chw: torch.Tensor, save_path: Path) -> None:
+    save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # De-normalize images from (0, 1) to (0, 255) scale
-    img = fake[0].permute(1, 2, 0).clamp(0, 1).mul(255).byte().numpy()
+    image_hwc = image_uint8_chw.permute(1, 2, 0).numpy()
+
     plt.figure(figsize=(4, 4))
-    plt.imshow(img)
+    plt.imshow(image_hwc)
     plt.axis("off")
-    plt.title("Generated 64x64 Pokemon")
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches="tight", pad_inches=0.05)
     plt.show()
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Train/Generate WGAN-GP on Pokemon 64x64 tensor dataset"
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to a WGANTrainer checkpoint to resume from.",
+    )
+    parser.add_argument(
+        "--generate-only",
+        action="store_true",
+        help="Load a checkpoint and generate images without training.",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Checkpoint path used in --generate-only mode.",
+    )
+    parser.add_argument(
+        "--num-generate",
+        type=int,
+        default=64,
+        help="Number of images to generate in --generate-only mode.",
+    )
+    return parser.parse_args()
+
+
+def build_trainer(device: str) -> WGANTrainer:
+    z_dim = 256
+    g_base_channels = 512
+    d_base_channels = 64
+
+    lr = 5e-4
+    betas = (0.9, 0.99)
+    gp_lambda = 5.0
+    critic_iterations = 8
+
+    generator = Generator(z_dim=z_dim, base_channels=g_base_channels, out_channels=3)
+    discriminator = Discriminator(in_channels=3, base_channels=d_base_channels)
+
+    trainer = WGANTrainer(
+        generator=generator,
+        discriminator=discriminator,
+        z_dim=z_dim,
+        lr_g=lr,
+        lr_d=lr,
+        betas=betas,
+        gp_lambda=gp_lambda,
+        critic_iterations=critic_iterations,
+        device=device,
+        use_amp=True,
+    )
+    return trainer
+
+
+def run_training(resume_checkpoint: str | None = None) -> None:
+    data_path = Path("data/processed/pokemon_64_normalized.pt")
+    batch_size = 64
+    epochs = 750
+
+    checkpoint_dir = Path("models/checkpoints")
+    final_model_path = Path("models/trained/wgan_gp_final.pt")
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required for this script, but no GPU is available.")
+
+    trainer = build_trainer(device="cuda")
+
+    images = load_processed_dataset(data_path)
+    dataset = TensorDataset(images)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=True,
+        drop_last=True,
+    )
+
+    history: List[Dict[str, float]] = []
+    start_epoch = 1
+
+    if resume_checkpoint is not None:
+        resume_path = Path(resume_checkpoint)
+        if not resume_path.exists():
+            raise FileNotFoundError(f"Resume checkpoint not found: {resume_path}")
+
+        ckpt_info = trainer.load_checkpoint(str(resume_path), strict=True)
+        start_epoch = int(ckpt_info.get("current_epoch", 0)) + 1
+        extra = ckpt_info.get("extra", {})
+        if isinstance(extra, dict) and isinstance(extra.get("history"), list):
+            history = extra["history"]
+
+        print(
+            f"Resumed from checkpoint: {resume_path} | "
+            f"current_epoch={ckpt_info.get('current_epoch', 0)} | "
+            f"global_step={ckpt_info.get('global_step', 0)} | "
+            f"next_epoch={start_epoch}"
+        )
+
+    for epoch in range(start_epoch, epochs + 1):
+        epoch_g = 0.0
+        epoch_d = 0.0
+        epoch_gp = 0.0
+        epoch_grad_norm = 0.0
+        steps = 0
+
+        for (real_imgs,) in dataloader:
+            metrics = trainer.train_step(real_imgs)
+            epoch_g += metrics["generator_loss"]
+            epoch_d += metrics["discriminator_loss"]
+            epoch_gp += metrics["gp"]
+            epoch_grad_norm += metrics["grad_norm"]
+            steps += 1
+
+        trainer.current_epoch = epoch
+
+        epoch_metrics = {
+            "epoch": float(epoch),
+            "generator_loss": epoch_g / max(steps, 1),
+            "discriminator_loss": epoch_d / max(steps, 1),
+            "gp": epoch_gp / max(steps, 1),
+            "grad_norm": epoch_grad_norm / max(steps, 1),
+        }
+        history.append(epoch_metrics)
+
+        print(
+            f"[Epoch {epoch:03d}/{epochs}] "
+            f"G: {epoch_metrics['generator_loss']:.6f} | "
+            f"D: {epoch_metrics['discriminator_loss']:.6f} | "
+            f"GP: {epoch_metrics['gp']:.6f} | "
+            f"grad_norm: {epoch_metrics['grad_norm']:.6f}"
+        )
+
+        if epoch % 25 == 0:
+            ckpt_path = checkpoint_dir / f"wgan_gp_epoch_{epoch:03d}.pt"
+            trainer.save_checkpoint(
+                str(ckpt_path),
+                extra={"epoch_metrics": epoch_metrics, "history": history},
+            )
+
+    final_model_path.parent.mkdir(parents=True, exist_ok=True)
+    trainer.save_checkpoint(
+        str(final_model_path),
+        extra={"history": history, "epochs": epochs},
+    )
+    print(f"Saved final model checkpoint to: {final_model_path}")
+
+
+@torch.no_grad()
+def generate_and_plot_from_checkpoint(
+    checkpoint_path: str, num_generate: int = 64
+) -> None:
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is required for generation in this script, but no GPU is available."
+        )
+
+    ckpt = Path(checkpoint_path)
+    if not ckpt.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+
+    trainer = build_trainer(device="cuda")
+    info = trainer.load_checkpoint(str(ckpt), strict=True)
+
+    print(
+        f"Loaded checkpoint: {ckpt} | "
+        f"epoch={info.get('current_epoch', 'NA')} | "
+        f"global_step={info.get('global_step', 'NA')}"
+    )
+
+    # Generate batch (N, 3, 64, 64), generator output is sigmoid => likely [0, 1]
+    fake_batch = trainer.sample(num_generate).detach().cpu()
+
+    # plot_images expects image tensors; keep normalized range expected by your plotter.
+    # If your plotter assumes [0,1], uncomment next line:
+    fake_batch = ((fake_batch + 1.0) / 2.0).clamp(0.0, 1.0).mul(255)
+    print(fake_batch.size())
+
+    plot_images(fake_batch)
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+
+    if args.generate_only:
+        if args.checkpoint is None:
+            raise ValueError("Please provide --checkpoint when using --generate-only")
+        generate_and_plot_from_checkpoint(
+            checkpoint_path=args.checkpoint,
+            num_generate=args.num_generate,
+        )
+    else:
+        print("Else statement runnning")
+        run_training(resume_checkpoint=args.resume)
