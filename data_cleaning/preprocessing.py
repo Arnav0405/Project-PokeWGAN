@@ -135,8 +135,36 @@ def main() -> None:
     dm.prepare_data()
     dm.setup()
 
-    save_path = dm.save_preprocessed_dataset()
-    print(f"Saved preprocessed dataset to: {save_path}")
+    # Create and save a 3x3 grid of preprocessed images (each resized to 64x64)
+    if dm.dataset is None:
+        raise RuntimeError("Dataset not initialized")
+
+    # Local import so we don't need to modify top-level imports
+    from torchvision.utils import save_image
+
+    total_images = len(dm.dataset)
+    num_show = 9
+    if total_images == 0:
+        raise RuntimeError("Dataset is empty")
+
+    # Collect the first `num_show` images (repeat last if fewer than 9)
+    imgs = []
+    for i in range(min(num_show, total_images)):
+        img, _ = dm.dataset[i]
+        imgs.append(img)
+
+    if len(imgs) < num_show:
+        imgs.extend([imgs[-1]] * (num_show - len(imgs)))
+
+    # Stack into a batch and save as a 3x3 grid
+    batch = torch.stack(imgs, dim=0)  # shape: [9, 3, 64, 64]
+    grid_save_path = dm.output_dir / "pokemon_64_grid.png"
+    save_image(batch, str(grid_save_path), nrow=3, padding=2)
+
+    print(f"Saved 3x3 image grid to: {grid_save_path}")
+
+    # save_path = dm.save_preprocessed_dataset()
+    # print(f"Saved preprocessed dataset to: {save_path}")
 
 
 if __name__ == "__main__":

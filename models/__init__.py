@@ -11,7 +11,6 @@ from .generator import (
 )
 from .pixel_norm import PixelNorm
 from .spatial_attn import SpatialAttention
-from .weight_initializer import weights_init
 from .wgan_gp_trainer import WGANTrainer
 
 __all__ = [
@@ -26,6 +25,5 @@ __all__ = [
     "EqualizedConvTranspose2d",
     "PixelNorm",
     "SpatialAttention",
-    "weights_init",
     "WGANTrainer",
 ]

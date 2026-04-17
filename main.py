@@ -264,6 +264,7 @@ if __name__ == "__main__":
             checkpoint_path=args.checkpoint,
             num_generate=args.num_generate,
         )
+
     else:
         print("Else statement runnning")
         run_training(resume_checkpoint=args.resume)
